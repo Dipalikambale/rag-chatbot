@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Local-RAG Startup Engine</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; background-color: #f0f2f5; }
+        .sidebar { width: 300px; background-color: #ffffff; border-right: 1px solid #e0e0e0; padding: 20px; display: flex; flex-direction: column; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
+        .chat-container { flex: 1; display: flex; flex-direction: column; background-color: #f7f9fa; }
+        .chat-header { background-color: #1e3a8a; color: white; padding: 15px 20px; font-size: 18px; font-weight: bold; }
+        .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .message { max-width: 75%; padding: 12px 16px; border-radius: 8px; font-size: 15px; line-height: 1.5; }
+        .user-message { background-color: #2563eb; color: white; align-self: flex-end; border-bottom-right-radius: 0; }
+        .ai-message { background-color: white; color: #333; align-self: flex-start; border-bottom-left-radius: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .chat-input-area { padding: 20px; background-color: white; border-top: 1px solid #e0e0e0; display: flex; gap: 10px; }
+        .chat-input { flex: 1; padding: 12px; border: 1px solid #cccccc; border-radius: 6px; font-size: 15px; outline: none; }
+        .btn { padding: 12px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background-color: #2563eb; color: white; }
+        .btn-primary:hover { background-color: #1d4ed8; }
+        .file-box { border: 2px dashed #2563eb; padding: 20px; text-align: center; border-radius: 8px; margin-bottom: 20px; background: #f8fafc; }
+        .file-list-section { margin-top: 10px; background: #f1f5f9; padding: 15px; border-radius: 8px; flex: 1; overflow-y: auto; }
+        .file-item { padding: 8px; background: white; margin-bottom: 6px; border-radius: 4px; border-left: 4px solid #10b981; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2 style="color: #1e3a8a; margin-top: 0;">Enterprise RAG</h2>
+        <p style="font-size: 12px; color: #666; margin-bottom: 20px;">Compliance Mode Active • Offline Encryption</p>
+        
+        <div class="file-box">
+            <input type="file" id="pdf-file" accept=".pdf" style="display: none;" onchange="updateFileNameLabel()">
+            <label id="file-label" for="pdf-file" style="cursor: pointer; color: #2563eb; font-weight: 500;">📁 Choose PDF File</label>
+            <button class="btn btn-primary" style="width: 100%; margin-top: 15px;" onclick="uploadFile()">Upload & Index</button>
+        </div>
+
+        <div class="file-list-section">
+            <h4 style="margin-top: 0; color: #334155; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px;">📁 Indexed Documents:</h4>
+            <div id="file-list-container" style="color: #64748b; font-size: 13px;">
+                No documents indexed yet.
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-container">
+        <div class="chat-header">Local Secure AI Assistant</div>
+        <div class="chat-messages" id="chat-box">
+            <div class="message ai-message">Hello! Please upload your PDF documents. I can analyze multiple files instantly with 100% data privacy.</div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="user-question" class="chat-input" placeholder="Ask a question about your indexed files..." onkeypress="if(event.key === 'Enter') askAI()">
+            <button class="btn btn-primary" onclick="askAI()">Ask AI</button>
+        </div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            fetch('/files').then(res => res.json()).then(data => { if(data.files) renderFiles(data.files); });
+        };
+
+        function updateFileNameLabel() {
+            const fileInput = document.getElementById("pdf-file");
+            const label = document.getElementById("file-label");
+            if (fileInput.files.length > 0) label.innerText = "📄 " + fileInput.files[0].name;
+        }
+
+        function uploadFile() {
+            const fileInput = document.getElementById("pdf-file");
+            if (fileInput.files.length === 0) { alert("Please select a file first."); return; }
+
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            appendMessage("System", "Uploading and parsing document matrices...", "ai-message");
+
+            fetch("/upload", { method: "POST", body: formData })
+            .then(response => {
+                if (!response.ok) {
+                    if(response.status === 402) { alert("Subscription Shield Active: Payment Required."); }
+                    throw new Error("Upload Failed");
+                }
+                return response.json();
+            })
+            .then(data => {
+                appendMessage("System", data.message, "ai-message");
+                if (data.files) renderFiles(data.files);
+                document.getElementById("file-label").innerText = "📁 Choose PDF File";
+                fileInput.value = "";
+            })
+            .catch(err => { appendMessage("Error", "Internal Server Error during ingestion.", "ai-message"); });
+        }
+
+        function askAI() {
+            const inputField = document.getElementById("user-question");
+            const question = inputField.value.trim();
+            if (!question) return;
+
+            appendMessage("You", question, "user-message");
+            inputField.value = "";
+
+            fetch("/query", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ question: question })
+            })
+            .then(res => res.json())
+            .then(data => { appendMessage("AI", data.answer, "ai-message"); })
+            .catch(err => { appendMessage("Error", "Unable to fetch response.", "ai-message"); });
+        }
+
+        function appendMessage(sender, text, className) {
+            const chatBox = document.getElementById("chat-box");
+            const msgDiv = document.createElement("div");
+            msgDiv.className = `message ${className}`;
+            msgDiv.innerHTML = text;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function renderFiles(filesArray) {
+            const container = document.getElementById("file-list-container");
+            if(filesArray.length === 0) { container.innerText = "No documents indexed yet."; return; }
+            container.innerHTML = "";
+            filesArray.forEach(file => {
+                const item = document.createElement("div");
+                item.className = "file-item";
+                item.innerText = "📄 " + file;
+                container.appendChild(item);
+            });
+        }
+    </script>
+</body>
+</html>
